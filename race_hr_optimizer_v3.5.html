@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <title>Race HR Optimizer v3.5</title>
+  <style>
+    :root{--bg:#f8fafc;--card:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--accent:#0f172a;--good:#047857;--warn:#b45309;--bad:#b91c1c}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    .wrap{max-width:1120px;margin:0 auto;padding:18px}.hero{background:linear-gradient(135deg,#0f172a,#334155);color:white;border-radius:26px;padding:22px;margin-bottom:16px;box-shadow:0 10px 25px #0002}
+    .hero h1{margin:0;font-size:30px}.hero p{color:#cbd5e1;line-height:1.45}.version{font-size:13px;color:#e2e8f0;margin-top:6px}
+    .grid{display:grid;gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:16px;box-shadow:0 6px 18px #0000000d}
+    h2{font-size:19px;margin:0 0 10px}h3{font-size:15px;margin:14px 0 8px;color:#334155}.row{display:grid;grid-template-columns:1fr 1fr 44px;gap:8px;margin:8px 0}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}input,select{width:100%;border:1px solid var(--line);border-radius:14px;padding:11px;font-size:16px;background:white;color:var(--ink)}
+    button{border:0;border-radius:14px;padding:11px 13px;background:var(--accent);color:white;font-weight:700;font-size:14px}button.ghost{background:#e2e8f0;color:#0f172a}button.danger{background:#fee2e2;color:#991b1b}
+    .result{background:#0f172a;color:white;border-radius:24px;padding:18px;margin-top:10px}.big{font-size:52px;font-weight:800;letter-spacing:-2px}.small{font-size:13px;color:var(--muted);line-height:1.45}.result .small{color:#cbd5e1}
+    .pill{display:inline-block;background:#e2e8f0;border-radius:999px;padding:6px 10px;font-size:13px;margin:3px 4px 3px 0}.ok{color:var(--good);font-weight:700}.warn{color:var(--warn);font-weight:700}.bad{color:var(--bad);font-weight:700}
+    canvas{width:100%;height:260px;border:1px solid var(--line);border-radius:16px;background:white;margin-top:10px}table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}th,td{border-bottom:1px solid var(--line);padding:6px;text-align:left}th{color:#475569;background:#f8fafc;position:sticky;top:0}
+    .scroll{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:16px;margin-top:8px}.footer{color:var(--muted);font-size:12px;margin:20px 0 8px;line-height:1.4}
+    @media(min-width:860px){.grid.two{grid-template-columns:1.1fr .9fr}.grid.equal{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:1fr 1fr 1fr}.hero h1{font-size:38px}.wrap{padding:28px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <section class="hero">
+    <h1>Race HR Optimizer</h1>
+    <div class="version">Prototyp 3.5 – kurvavläsning i steg 1, Ironman återställd</div>
+    <p>Beräknar optimal konstant startpuls från testets puls–fart-linje och en personlig tävlingstid–puls-kurva. Under loppet räknas fartavvikelse om till ny sluttid och ny mål-HR.</p>
+  </section>
+
+  <section class="card">
+    <h2>1. Stegtest: hastighet/effekt ↔ puls</h2>
+    <p class="small">För löpning används hastighet km/h. För cykel kan detta senare bytas till watt. Appen estimerar både en lågintensiv HR→fart-linje och en preliminär Conconi-brytpunkt.</p>
+    <div id="testRows"></div>
+    <button id="addTest">+ Lägg till teststeg</button>
+    <canvas id="testChart" width="900" height="320"></canvas>
+    <div class="row2" style="margin-top:10px">
+      <div>
+        <label>Läs av kurvan: puls, bpm</label>
+        <input id="curveHrIn" type="number" step="1" value="150">
+        <p class="small">Fart från kurvan: <b id="curveSpeedOut">–</b></p>
+      </div>
+      <div>
+        <label>Läs av kurvan: fart, km/h</label>
+        <input id="curveSpeedIn" type="number" step="0.1" value="10.0">
+        <p class="small">Puls från kurvan: <b id="curveHrOut">–</b></p>
+      </div>
+    </div>
+    <p class="small" id="speedModel"></p>
+  </section>
+
+  <section class="card" style="margin-top:14px">
+    <h2>2. Personlig tävlingstid ↔ medelpuls-kurva</h2>
+    <div class="row3">
+      <div><label>Sportfilter</label><select id="sportFilter"><option>Running</option><option>Cycling</option><option>Nordic skiing</option><option>Swimming</option><option>All</option></select></div>
+      <div><label>Kurvmodell</label><select id="modelKind"><option value="linear">Linjär HR = a + b·TT</option><option value="log">Log HR = a + b·ln(TT)</option><option value="sqrt">Rot HR = a + b·√TT</option><option value="auto">Auto lägst RMSE</option></select></div>
+      <div><label>Säkerhetsmarginal, bpm</label><input id="safety" type="number" step="1" value="0"></div>
+    </div>
+    <div class="row2" style="margin-top:8px">
+      <div><label>Nivåjustering, bpm</label><input id="hrOffset" type="number" step="1" value="0"></div>
+      <div><label>Lutningsfaktor</label><input id="slopeFactor" type="number" step="0.05" value="1.00"></div>
+    </div>
+    <div class="row2" style="margin-top:8px">
+      <button class="ghost" id="alignLthr">Flytta kurvan till Conconi/LTHR ≈ 30 min</button>
+      <button class="ghost" id="resetExcel">Återställ Excelpunkter</button>
+    </div>
+    <canvas id="ttChart" width="900" height="320"></canvas>
+    <p class="small" id="enduranceModel"></p>
+    <h3>LTHR vid olika varaktighet</h3>
+    <p class="small">Beräknas från den valda och justerade tävlingstid–puls-kurvan. Värdena är modellens medelpuls vid respektive varaktighet och påverkas inte av säkerhetsmarginalen.</p>
+    <div class="scroll" style="max-height:none">
+      <table>
+        <thead><tr><th>Benämning</th><th>Tid</th><th>Beräknad puls</th></tr></thead>
+        <tbody id="lthrTimeRows"></tbody>
+      </table>
+    </div>
+    <h3>Inlästa/egna punkter</h3>
+    <div class="scroll">
+      <table><thead><tr><th>Aktivitet</th><th>Sport</th><th>Tid h</th><th>HR</th><th></th></tr></thead><tbody id="raceRows"></tbody></table>
+    </div>
+    <button id="addRace" style="margin-top:8px">+ Lägg till lopp</button>
+  </section>
+
+  <div class="grid equal" style="margin-top:14px">
+    <section class="card">
+      <h2>3. Rekommendation vid testförhållanden</h2>
+      <div class="row2">
+        <div><label>Distans, km</label><input id="distance" type="number" step="0.001" value="42.195"></div>
+        <div><label>Startgissning HR, valfritt</label><input id="startGuess" type="number" step="1" value=""></div>
+      </div>
+      <div class="result">
+        <div class="small">Optimal konstant startpuls om racedagen = testdagen</div>
+        <div><span class="big" id="dryHr">–</span> bpm</div>
+        <div class="row2" style="margin-top:12px">
+          <div><div class="small">Startfart</div><b id="drySpeed">–</b></div>
+          <div><div class="small">Sluttid</div><b id="dryTime">–</b></div>
+        </div>
+      </div>
+      <p class="small" id="dryExplain"></p>
+    </section>
+
+    <section class="card">
+      <h2>4. Racedagsobservation</h2>
+      <p class="small">Här matar du in vad du faktiskt får för fart vid en viss puls. Detta ger en racedagsfaktor jämfört med testet.</p>
+      <div class="row2">
+        <div><label>Kontrollpuls, bpm</label><input id="checkHr" type="number" value="156"></div>
+        <div><label>Observerad fart, km/h</label><input id="obsSpeed" type="number" step="0.1" value="9.5"></div>
+      </div>
+      <div class="row2">
+        <div><label>Korrigering</label><select id="factorMode"><option value="live">Live/observerad</option><option value="manual">Manuell faktor</option></select></div>
+        <div><label>Manuell faktor</label><input id="manualFactor" type="number" step="0.01" value="1.00"></div>
+      </div>
+      <p class="small" id="factorText"></p>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:14px">
+    <h2>5. Itererad ny mål-HR för dagens förhållanden</h2>
+    <p class="small">Om faktisk fart vid 156 bpm ger 4:26, och kurvan säger att 4:26 kräver lite lägre HR, räknar appen om farten vid den lägre pulsen. Då blir tiden längre. Detta upprepas tills värdena stabiliseras.</p>
+    <div class="result">
+      <div class="small">Racedagskorrigerad optimal konstant puls</div>
+      <div><span class="big" id="liveHr">–</span> bpm</div>
+      <div class="row3" style="margin-top:12px">
+        <div><div class="small">Ny fart</div><b id="liveSpeed">–</b></div>
+        <div><div class="small">Ny sluttid</div><b id="liveTime">–</b></div>
+        <div><div class="small">Skillnad mot testdag</div><b id="liveDelta">–</b></div>
+      </div>
+    </div>
+    <p class="small" id="iterationText"></p>
+  </section>
+
+  <p class="footer">Experimentell prototyp. Använd inte som medicinsk rådgivning. Avbryt eller sänk belastningen vid varningssignaler.</p>
+</div>
+
+<script>
+// Race HR Optimizer v3.3
+const EXCEL_RACES = [{"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 3.9522, "hr": 165}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 8.5797, "hr": 151}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 8.6222, "hr": 149}, {"activity": "Stockholm Halvmaraton", "sport": "Running", "durationH": 2.0064, "hr": 166}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 8.2594, "hr": 151}, {"activity": "Stockholm Maraton", "sport": "Running", "durationH": 5.1108, "hr": 154}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 8.27, "hr": 158}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 7.3011, "hr": 157}, {"activity": "Stockholm Maraton", "sport": "Running", "durationH": 4.1108, "hr": 156}, {"activity": "Vansbrosimmet", "sport": "Swimming", "durationH": 1.0767, "hr": 167}, {"activity": "Copenhagen Ironman", "sport": "Running", "durationH": 13.12, "hr": 139}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 7.9897, "hr": 154}, {"activity": "Vätternrundan", "sport": "Cycling", "durationH": 10.375, "hr": 148}, {"activity": "Lidingöloppet", "sport": "Running", "durationH": 3.2733, "hr": 164}, {"activity": "Lidingöloppet", "sport": "Running", "durationH": 3.6033, "hr": 161}, {"activity": "Vätternrundan", "sport": "Cycling", "durationH": 10.375, "hr": 148}, {"activity": "Vårklassikern", "sport": "Cycling", "durationH": 3.7336, "hr": 151}, {"activity": "Vätternrundan", "sport": "Cycling", "durationH": 10.2253, "hr": 145}, {"activity": "Vårklassikern", "sport": "Cycling", "durationH": 3.6483, "hr": 158}, {"activity": "Vätternrundan", "sport": "Cycling", "durationH": 11.6167, "hr": 149}, {"activity": "Engelbrektsrundan", "sport": "Cycling", "durationH": 6.4572, "hr": 151}, {"activity": "Vätternrundan", "sport": "Cycling", "durationH": 11.4667, "hr": 143}, {"activity": "Copenhagen Ironman", "sport": "Cycling", "durationH": 5.8456, "hr": 146}, {"activity": "Copenhagen Ironman", "sport": "Cycling", "durationH": 13.6431, "hr": 146}, {"activity": "Engelbrektsloppet", "sport": "Nordic skiing", "durationH": 5.3417, "hr": 164}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 7.8933, "hr": 156}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 8.2667, "hr": 160}, {"activity": "Intersportloppet", "sport": "Nordic skiing", "durationH": 4.1872, "hr": 154}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 6.4919, "hr": 158}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 7.6464, "hr": 156}, {"activity": "Vasaloppet", "sport": "Nordic skiing", "durationH": 7.4836, "hr": 155}, {"activity": "Copenhagen Ironman", "sport": "Swimming", "durationH": 1.5367, "hr": 152}];
+const $ = id => document.getElementById(id);
+
+let testRows = [{speed:8,hr:125},{speed:9,hr:135},{speed:10,hr:146},{speed:11,hr:158},{speed:12,hr:171}];
+let raceRows = JSON.parse(JSON.stringify(EXCEL_RACES));
+
+function isNum(x){ return Number.isFinite(+x); }
+function fmt(x,d=1){ return Number.isFinite(+x) ? (+x).toFixed(d) : '–'; }
+function timeFmt(h){ if(!Number.isFinite(+h)) return '–'; const m=Math.round(+h*60); return Math.floor(m/60)+':'+String(m%60).padStart(2,'0'); }
+function mmssFromKmh(kmh){ if(!Number.isFinite(+kmh) || kmh<=0) return '–'; const sec=3600/kmh; return Math.floor(sec/60)+':'+String(Math.round(sec%60)).padStart(2,'0')+'/km'; }
+
+function linReg(points, xFn, yFn){
+  const pts = points.map(p=>[xFn(p),yFn(p)]).filter(([x,y])=>Number.isFinite(x)&&Number.isFinite(y));
+  if(pts.length < 2) return null;
+  const n=pts.length, sx=pts.reduce((s,p)=>s+p[0],0), sy=pts.reduce((s,p)=>s+p[1],0);
+  const sxx=pts.reduce((s,p)=>s+p[0]*p[0],0), sxy=pts.reduce((s,p)=>s+p[0]*p[1],0);
+  const d=n*sxx-sx*sx; if(Math.abs(d)<1e-9) return null;
+  const b=(n*sxy-sx*sy)/d, a=(sy-b*sx)/n;
+  const rmse=Math.sqrt(pts.reduce((s,p)=>s+(a+b*p[0]-p[1])**2,0)/pts.length);
+  return {a,b,rmse,n:pts.length};
+}
+
+function conconi(rows){
+  const pts=rows.map(r=>({x:+r.speed,y:+r.hr})).filter(p=>isNum(p.x)&&isNum(p.y)).sort((a,b)=>a.x-b.x);
+  if(!pts.length) return null;
+
+  // Conconi-brytningen ska plana av: pulsökningen per km/h måste MINSKA efter brytpunkten.
+  // En knäckning åt motsatt håll (brantare HR-ökning vid högre fart) accepteras inte.
+  let best=null;
+  if(pts.length>=4){
+    for(let split=2; split<=pts.length-2; split++){
+      const lo=pts.slice(0,split), hi=pts.slice(split);
+      const r1=linReg(lo,p=>p.x,p=>p.y), r2=linReg(hi,p=>p.x,p=>p.y);
+      if(!r1||!r2) continue;
+      if(!(r2.b < r1.b)) continue;
+
+      const sse=lo.reduce((s,p)=>s+(r1.a+r1.b*p.x-p.y)**2,0)+hi.reduce((s,p)=>s+(r2.a+r2.b*p.x-p.y)**2,0);
+      const x=(r2.a-r1.a)/(r1.b-r2.b), y=r1.a+r1.b*x;
+      if(Number.isFinite(x)&&Number.isFinite(y) && x>=pts[0].x && x<=pts[pts.length-1].x){
+        if(!best || sse<best.sse) best={split,sse,ltvc:x,lthr:y,r1,r2,fallback:false};
+      }
+    }
+  }
+  if(best) return best;
+
+  // Om ingen korrekt avplanande brytpunkt hittas används sista/högsta teststeget som Conconi-värde.
+  const last=pts[pts.length-1];
+  const rAll=pts.length>=2 ? linReg(pts,p=>p.x,p=>p.y) : null;
+  return {split:pts.length,sse:NaN,ltvc:last.x,lthr:last.y,r1:rAll,r2:null,fallback:true};
+}
+
+function selectedRaces(){
+  const sport=$('sportFilter').value;
+  return raceRows.filter(r=>isNum(r.durationH)&&isNum(r.hr)&&+r.durationH>0&&+r.hr>80&&(sport==='All'||r.sport===sport));
+}
+
+function transform(kind,t){ if(kind==='log') return Math.log(t); if(kind==='sqrt') return Math.sqrt(t); return t; }
+function fitTTHR(){
+  const pts=selectedRaces();
+  const candidates=['linear','log','sqrt'].map(k=>({kind:k, reg:linReg(pts,p=>transform(k,+p.durationH),p=>+p.hr)})).filter(x=>x.reg);
+  if(candidates.length===0) return null;
+  let chosen = $('modelKind').value==='auto' ? candidates.reduce((a,b)=>a.reg.rmse<b.reg.rmse?a:b) : candidates.find(c=>c.kind===$('modelKind').value) || candidates[0];
+  const offset=+$('hrOffset').value||0, slopeFactor=+$('slopeFactor').value||1;
+  const baseA=chosen.reg.a, baseB=chosen.reg.b;
+  return {
+    kind: chosen.kind, n: chosen.reg.n, rmse: chosen.reg.rmse,
+    a: baseA + offset, b: baseB * slopeFactor, rawA: baseA, rawB: baseB,
+    hrAt(t){ return this.a + this.b * transform(this.kind,t); }
+  };
+}
+
+function speedModel(){
+  const c=conconi(testRows);
+  let pts=testRows.map(r=>({hr:+r.hr,speed:+r.speed})).filter(p=>isNum(p.hr)&&isNum(p.speed));
+  if(c && !c.fallback) {
+    const below = testRows.filter(r=>+r.speed <= c.ltvc+0.001).map(r=>({hr:+r.hr,speed:+r.speed}));
+    if(below.length>=2) pts=below;
+  }
+  const reg=linReg(pts,p=>p.hr,p=>p.speed);
+  return {reg, conconi:c};
+}
+
+function speedFromHR(hr, factor=1){
+  const sm=speedModel().reg;
+  if(!sm) return NaN;
+  return Math.max(0, (sm.a + sm.b*hr) * factor);
+}
+
+function hrFromTestCurve(speed){
+  const sm=speedModel(), cc=sm.conconi, reg=sm.reg;
+  speed=+speed;
+  if(!Number.isFinite(speed)) return NaN;
+  if(cc && !cc.fallback && cc.r1 && cc.r2){
+    const r = speed<=cc.ltvc ? cc.r1 : cc.r2;
+    return r.a + r.b*speed;
+  }
+  if(!reg || Math.abs(reg.b)<1e-12) return NaN;
+  return (speed-reg.a)/reg.b;
+}
+
+function speedFromTestCurveHR(hr){
+  const sm=speedModel(), cc=sm.conconi, reg=sm.reg;
+  hr=+hr;
+  if(!Number.isFinite(hr)) return NaN;
+  if(cc && !cc.fallback && cc.r1 && cc.r2){
+    const r = hr<=cc.lthr ? cc.r1 : cc.r2;
+    if(Math.abs(r.b)<1e-12) return NaN;
+    return (hr-r.a)/r.b;
+  }
+  if(!reg) return NaN;
+  return reg.a + reg.b*hr;
+}
+
+function solveFixed(distance, factor, model, safety){
+  if(!model || !Number.isFinite(distance) || distance<=0) return null;
+  let best=null;
+  for(let hr=90; hr<=205; hr+=0.02){
+    const sp=speedFromHR(hr,factor);
+    if(sp<=0) continue;
+    const tt=distance/sp;
+    const allowed=model.hrAt(tt)-safety;
+    if(hr<=allowed) best={hr, speed:sp, time:tt, allowed};
+  }
+  return best;
+}
+
+function drawChart(canvas, pts, xKey, yKey, opts={}){
+  const ctx=canvas.getContext('2d'), w=canvas.width, h=canvas.height;
+  ctx.clearRect(0,0,w,h); ctx.fillStyle='white'; ctx.fillRect(0,0,w,h);
+  const pad={l:56,r:18,t:18,b:42};
+  const xs=pts.map(p=>+p[xKey]).filter(Number.isFinite), ys=pts.map(p=>+p[yKey]).filter(Number.isFinite);
+  if(xs.length<1||ys.length<1) return;
+  let xmin=Math.min(...xs), xmax=Math.max(...xs), ymin=Math.min(...ys), ymax=Math.max(...ys);
+  if(opts.xmin!==undefined) xmin=opts.xmin; if(opts.xmax!==undefined) xmax=opts.xmax;
+  if(opts.ymin!==undefined) ymin=opts.ymin; if(opts.ymax!==undefined) ymax=opts.ymax;
+  const dx=(xmax-xmin)||1, dy=(ymax-ymin)||1; xmin-=dx*.06; xmax+=dx*.06; ymin-=dy*.12; ymax+=dy*.12;
+  const X=x=>pad.l+(x-xmin)/(xmax-xmin)*(w-pad.l-pad.r), Y=y=>h-pad.b-(y-ymin)/(ymax-ymin)*(h-pad.t-pad.b);
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,h-pad.b); ctx.lineTo(w-pad.r,h-pad.b); ctx.stroke();
+  ctx.fillStyle='#64748b'; ctx.font='13px system-ui';
+  for(let i=0;i<5;i++){ const x=xmin+(xmax-xmin)*i/4, y=ymin+(ymax-ymin)*i/4; ctx.fillText(fmt(x,opts.xDigits??1),X(x)-12,h-pad.b+24); ctx.fillText(fmt(y,0),8,Y(y)+4); ctx.strokeStyle='#eef2f7'; ctx.beginPath(); ctx.moveTo(pad.l,Y(y)); ctx.lineTo(w-pad.r,Y(y)); ctx.stroke(); }
+  if(opts.line){
+    ctx.strokeStyle='#0f172a'; ctx.lineWidth=2.5; ctx.beginPath();
+    const steps=80; for(let i=0;i<=steps;i++){ const x=xmin+(xmax-xmin)*i/steps; const y=opts.line(x); if(i===0)ctx.moveTo(X(x),Y(y)); else ctx.lineTo(X(x),Y(y)); } ctx.stroke();
+  }
+  if(opts.line2){
+    ctx.strokeStyle='#b45309'; ctx.lineWidth=2; ctx.setLineDash([7,5]); ctx.beginPath();
+    const steps=80; for(let i=0;i<=steps;i++){ const x=xmin+(xmax-xmin)*i/steps; const y=opts.line2(x); if(i===0)ctx.moveTo(X(x),Y(y)); else ctx.lineTo(X(x),Y(y)); } ctx.stroke(); ctx.setLineDash([]);
+  }
+  for(const p of pts){ ctx.fillStyle=p.color||'#2563eb'; ctx.beginPath(); ctx.arc(X(+p[xKey]),Y(+p[yKey]),4,0,Math.PI*2); ctx.fill(); }
+  ctx.fillStyle='#0f172a'; ctx.font='bold 13px system-ui'; if(opts.xlabel)ctx.fillText(opts.xlabel,w/2-40,h-8); if(opts.ylabel)ctx.fillText(opts.ylabel,8,16);
+}
+
+function renderAllRows(){
+  $('testRows').innerHTML=testRows.map((r,i)=>`<div class="row"><input type="number" step="0.1" value="${r.speed}" onchange="testRows[${i}].speed=this.value;calc()"><input type="number" step="1" value="${r.hr}" onchange="testRows[${i}].hr=this.value;calc()"><button class="danger" onclick="testRows.splice(${i},1);renderAllRows();calc()">×</button></div>`).join('');
+  const sport=$('sportFilter').value;
+  $('raceRows').innerHTML=raceRows.map((r,i)=> sport==='All'||r.sport===sport ? `<tr><td><input value="${r.activity||''}" onchange="raceRows[${i}].activity=this.value;calc()"></td><td><select onchange="raceRows[${i}].sport=this.value;calc()"><option ${r.sport==='Running'?'selected':''}>Running</option><option ${r.sport==='Cycling'?'selected':''}>Cycling</option><option ${r.sport==='Nordic skiing'?'selected':''}>Nordic skiing</option><option ${r.sport==='Swimming'?'selected':''}>Swimming</option></select></td><td><input type="number" step="0.01" value="${r.durationH}" onchange="raceRows[${i}].durationH=this.value;calc()"></td><td><input type="number" step="1" value="${r.hr}" onchange="raceRows[${i}].hr=this.value;calc()"></td><td><button class="danger" onclick="raceRows.splice(${i},1);renderAllRows();calc()">×</button></td></tr>` : '').join('');
+}
+
+function calc(){
+  const sm=speedModel(), speedReg=sm.reg, cc=sm.conconi;
+  const model=fitTTHR(), distance=+$('distance').value, safety=+$('safety').value||0;
+  const dry=solveFixed(distance,1,model,safety);
+  const checkHr=+$('checkHr').value, predAtCheck=speedFromHR(checkHr,1), obs=+$('obsSpeed').value;
+  const liveFactor=predAtCheck>0 ? obs/predAtCheck : 1;
+  const factor=$('factorMode').value==='live' ? liveFactor : (+$('manualFactor').value||1);
+  const live=solveFixed(distance,factor,model,safety);
+  const observedTime=distance/obs;
+
+  const curveHrIn=+$('curveHrIn').value;
+  const curveSpeedIn=+$('curveSpeedIn').value;
+  const curveSpeedOut=speedFromTestCurveHR(curveHrIn);
+  const curveHrOut=hrFromTestCurve(curveSpeedIn);
+  $('curveSpeedOut').textContent = Number.isFinite(curveSpeedOut)
+    ? `${fmt(curveSpeedOut,2)} km/h (${mmssFromKmh(curveSpeedOut)})`
+    : '–';
+  $('curveHrOut').textContent = Number.isFinite(curveHrOut)
+    ? `${fmt(curveHrOut,1)} bpm`
+    : '–';
+
+  $('speedModel').innerHTML =
+    `HR→fartmodell: fart = <b>${fmt(speedReg?.a,3)}</b> + <b>${fmt(speedReg?.b,4)}</b> × HR. ` +
+    (cc ? (cc.fallback
+      ? `Ingen avplanande Conconi-brytpunkt hittades. Högsta teststeget används: LTVC = <b>${fmt(cc.ltvc,1)} km/h</b>, Conconi LTHR = <b>${fmt(cc.lthr,0)} bpm</b>.`
+      : `Conconi: LTVC ≈ <b>${fmt(cc.ltvc,1)} km/h</b>, LTHR ≈ <b>${fmt(cc.lthr,0)} bpm</b>.`)
+      : 'Inga giltiga testpunkter för Conconi.');
+  $('enduranceModel').innerHTML = model ?
+    `Modell: <b>${model.kind}</b>, HR = ${fmt(model.a,2)} + ${fmt(model.b,3)} × f(TT), n=${model.n}, RMSE≈${fmt(model.rmse,1)} bpm. Säkerhetsmarginal dras efter kurvan.` : 'För få tävlingspunkter.';
+
+  const lthrTimes=[
+    ['LTHR30',0.5,'30 min'],
+    ['LTHR60',1,'60 min (1 h)'],
+    ['LTHR120',2,'120 min (2 h)'],
+    ['LTHR240',4,'240 min (4 h)'],
+    ['LTHR480',8,'480 min (8 h)'],
+    ['LTHR720',12,'720 min (12 h)']
+  ];
+  $('lthrTimeRows').innerHTML=lthrTimes.map(([name,h,label])=>
+    `<tr><td><b>${name}</b></td><td>${label}</td><td>${model ? fmt(model.hrAt(h),1)+' bpm' : '–'}</td></tr>`
+  ).join('');
+
+  $('dryHr').textContent=fmt(dry?.hr,0);
+  $('drySpeed').innerHTML=`${fmt(dry?.speed,1)} km/h <span class="small">(${mmssFromKmh(dry?.speed)})</span>`;
+  $('dryTime').textContent=timeFmt(dry?.time);
+  $('dryExplain').innerHTML = dry ? `Torr lösning: HR ${fmt(dry.hr,1)} ger fart ${fmt(dry.speed,2)} km/h och sluttid ${timeFmt(dry.time)}. Kurvan tillåter då ${fmt(dry.allowed+safety,1)} bpm före säkerhetsmarginal.` : '';
+
+  $('factorText').innerHTML =
+    `Vid ${fmt(checkHr,0)} bpm väntar testmodellen <b>${fmt(predAtCheck,2)} km/h</b>. Du observerar <b>${fmt(obs,2)} km/h</b>, vilket ger <b>${timeFmt(observedTime)}</b> på ${fmt(distance,1)} km vid oförändrad puls/fart.<br>`+
+    `Racedagsfaktor = <b>${fmt(factor,3)}</b>. `+
+    (factor<0.98?'<span class="warn">Sämre än testdag: iterationen ska ge lägre HR, lägre fart och längre tid.</span>':factor>1.02?'<span class="ok">Bättre än testdag.</span>':'Ungefär som testdagen.');
+
+  $('liveHr').textContent=fmt(live?.hr,0);
+  $('liveSpeed').innerHTML=`${fmt(live?.speed,2)} km/h <span class="small">(${mmssFromKmh(live?.speed)})</span>`;
+  $('liveTime').textContent=timeFmt(live?.time);
+  $('liveDelta').textContent=dry&&live ? `${fmt(live.hr-dry.hr,1)} bpm, ${Math.round((live.time-dry.time)*60)} min` : '–';
+  $('iterationText').innerHTML = live && dry ?
+    `Kontroll: eftersom ny mål-HR (${fmt(live.hr,1)}) är ${live.hr<checkHr?'lägre':'högre'} än kontrollpulsen (${fmt(checkHr,0)}) blir ny fart <b>${fmt(live.speed,2)} km/h</b>. Den ska vara lägre än observerade ${fmt(obs,2)} km/h om mål-HR sänks. Sluttiden blir <b>${timeFmt(live.time)}</b>.` : '';
+
+  const testPts=testRows.map(r=>({speed:+r.speed,hr:+r.hr})).filter(p=>isNum(p.speed)&&isNum(p.hr));
+  drawChart($('testChart'), testPts, 'speed','hr', {
+    xlabel:'Hastighet km/h', ylabel:'HR', xDigits:1,
+    line: x => cc && !cc.fallback && x<=cc.ltvc ? cc.r1.a+cc.r1.b*x : cc && !cc.fallback ? cc.r2.a+cc.r2.b*x : (speedReg ? (x-speedReg.a)/speedReg.b : NaN),
+  });
+
+  const pts=selectedRaces().map(r=>({durationH:+r.durationH,hr:+r.hr,color:'#2563eb'}));
+  const chartPts=[...pts];
+  if(dry) chartPts.push({durationH:dry.time,hr:dry.hr,color:'#047857'});
+  if(live) chartPts.push({durationH:live.time,hr:live.hr,color:'#b45309'});
+  drawChart($('ttChart'), chartPts, 'durationH','hr', {
+    xlabel:'TT timmar', ylabel:'HR', xDigits:1,
+    xmin:0, xmax: Math.max(14, ...chartPts.map(p=>p.durationH)),
+    line: x => model ? model.hrAt(Math.max(0.05,x)) : NaN
+  });
+}
+
+$('addTest').onclick=()=>{testRows.push({speed:'',hr:''});renderAllRows();calc();};
+$('addRace').onclick=()=>{raceRows.push({activity:'Eget lopp',sport:$('sportFilter').value==='All'?'Running':$('sportFilter').value,durationH:'',hr:''});renderAllRows();calc();};
+$('resetExcel').onclick=()=>{raceRows=JSON.parse(JSON.stringify(EXCEL_RACES));renderAllRows();calc();};
+$('alignLthr').onclick=()=>{
+  const cc=speedModel().conconi, model=fitTTHR();
+  if(!cc||!model) return alert('Behöver Conconi-punkt och TT/HR-kurva först.');
+  const current=model.hrAt(0.5);
+  $('hrOffset').value = fmt((+$('hrOffset').value||0) + (cc.lthr-current),0);
+  calc();
+};
+['sportFilter','modelKind','safety','hrOffset','slopeFactor','distance','startGuess','checkHr','obsSpeed','factorMode','manualFactor','curveHrIn','curveSpeedIn'].forEach(id=>$(id).addEventListener('input',()=>{ if(id==='sportFilter') renderAllRows(); calc(); }));
+
+// Ta bort eventuell gammal service worker som kan ha cachat prototyp 2
+if('serviceWorker' in navigator){ navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}); }
+renderAllRows(); calc();
+</script>
+</body>
+</html>
