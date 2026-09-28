@@ -327,12 +327,12 @@ function calc(){
     `Modell: <b>${model.kind}</b>, HR = ${fmt(model.a,2)} + ${fmt(model.b,3)} × f(TT), n=${model.n}, RMSE≈${fmt(model.rmse,1)} bpm. Säkerhetsmarginal dras efter kurvan.` : 'För få tävlingspunkter.';
 
   const lthrTimes=[
-    ['LTHR30',0.5,'30 min'],
-    ['LTHR60',1,'60 min (1 h)'],
-    ['LTHR120',2,'120 min (2 h)'],
-    ['LTHR240',4,'240 min (4 h)'],
-    ['LTHR480',8,'480 min (8 h)'],
-    ['LTHR720',12,'720 min (12 h)']
+    ['FTHR30',0.5,'30 min'],
+    ['FTHR60',1,'60 min (1 h)'],
+    ['FTHR120',2,'120 min (2 h)'],
+    ['FTHR240',4,'240 min (4 h)'],
+    ['FTHR480',8,'480 min (8 h)'],
+    ['FTHR720',12,'720 min (12 h)']
   ];
   $('lthrTimeRows').innerHTML=lthrTimes.map(([name,h,label])=>
     `<tr><td><b>${name}</b></td><td>${label}</td><td>${model ? fmt(model.hrAt(h),1)+' bpm' : '–'}</td></tr>`
