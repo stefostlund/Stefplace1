@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
-  <title>Race HR Optimizer v3.8</title>
+  <title>Race HR Optimizer v3.9</title>
   <style>
     :root{--bg:#f8fafc;--card:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--accent:#0f172a;--good:#047857;--warn:#b45309;--bad:#b91c1c}
     *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
@@ -35,10 +35,17 @@
 <div class="wrap">
   <section class="hero">
     <h1>Race HR Optimizer</h1>
-    <div class="version">Prototyp 3.8 – tvåvägs avläsning av steg 2-kurvan</div>
+    <div class="version">Prototyp 4.0 – gemensam brytpunkt och sparbara profiler</div>
     <p>Beräknar optimal konstant startpuls från testets puls–fart-linje och en personlig tävlingstid–puls-kurva. Under loppet räknas fartavvikelse om till ny sluttid och ny mål-HR.</p>
   </section>
 
+  <section class="card" style="margin-bottom:14px">
+    <h2>Spara och öppna ifyllda versioner</h2>
+    <p class="small">Spara en egen HTML-fil med samtliga inmatade värden, eller en liten JSON-fil som kan läsas in i appen senare. Filerna sparas på din enhet, inte på GitHub.</p>
+    <div class="row2"><div><label>Namn på version</label><input id="profileName" value="" placeholder="Exempel: Almgren analys eller Min analys 2026"></div><div><label>Välj fil att återställa</label><input id="loadProfile" type="file" accept=".json,.html" aria-label="Öppna sparad JSON-profil"></div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button id="saveHtml">Spara ifylld HTML</button><button class="ghost" id="saveJson">Exportera data (JSON)</button></div>
+    <p class="small" id="saveStatus" aria-live="polite" style="margin-top:8px">HTML-kopian kan öppnas direkt. JSON-filen återställs via filväljaren ovan.</p>
+  </section>
   <section class="card">
     <h2>1. Stegtest: hastighet ↔ puls och tröskelpuls</h2>
     <p class="small">Skriv över eller ta bort exempelvärdena och lägg in egna teststeg. Kurvan används både för puls↔fart och för ett Conconi-estimat av tröskelpuls.</p>
@@ -56,7 +63,7 @@
         </div>
         <div><button class="ghost" id="resetThreshold">Använd grafestimat</button></div>
       </div>
-      <div class="threshold-meta">Värdet fylls från Conconi-kurvan men kan skrivas över manuellt. Om ingen tydlig avplanande brytpunkt hittas används högsta teststegets puls som reservestimat.</div>
+      <div class="threshold-meta">Värdet fylls från Conconi-kurvan men kan skrivas över manuellt. Om ingen brytpunkt hittas används högsta uppmätta puls som reservestimat. En osäker brytpunkt visas med varning.</div>
     </div>
 
     <canvas id="testChart" width="900" height="320"></canvas>
@@ -88,9 +95,20 @@
     </div>
     <div class="row2" style="margin-top:8px">
       <button class="ghost" id="alignLthr">Flytta kurvan till vald LTHR ≈ 30 min</button>
-      <button class="ghost" id="resetExcel">Återställ Excelpunkter</button>
+      <button class="ghost" id="resetExcel">Rensa egna lopp</button>
+    </div>
+    <div class="threshold-box" style="border-color:#cbd5e1">
+      <b>Så tolkas tävlingspunkterna</b>
+      <p class="small"><b>Väggning:</b> Korta alltid tiden till när du inte längre kunde hålla tempot. Ange medelpuls från minut 10 fram till väggningen – inte hela loppets medelpuls.</p>
+      <p class="small"><b>Krafter kvar i mål:</b> Din verkliga maximala uthållighetstid borde vara längre än sluttiden. Uppskatta längre tid om möjligt; annars behåll tiden och markera ”Krafter kvar”. Punkten är då osäker och används inte automatiskt i anpassningen.</p>
+      <p class="small"><b>Maximalt lopp:</b> Använd sluttid och medelpuls efter de första 10 minuterna.</p>
+    </div>
+    <div class="row2" style="margin-top:10px">
+      <div><label>Metod för blå kurva</label><select id="raceMethod"><option value="template" selected>Grundkurva förskjuten efter egna lopp</option><option value="own">Enbart egna lopp</option><option value="lt2">LT2 vid 30 minuter (tidigare metod)</option></select></div>
+      <div><label>Information om beräkningen</label><p class="small" id="methodInfo"></p></div>
     </div>
     <canvas id="ttChart" width="900" height="320"></canvas>
+    <p class="small">Grå streckad = oförändrad grundkurva · Blå = vald modell · Gröna punkter = används i anpassningen · Orange = jämförelsepunkter.</p>
     <div class="row2" style="margin-top:10px">
       <div>
         <label>Läs av kurvan: puls, bpm</label>
@@ -112,11 +130,13 @@
         <tbody id="lthrTimeRows"></tbody>
       </table>
     </div>
-    <h3>Inlästa/egna punkter</h3>
-    <div class="scroll">
-      <table><thead><tr><th>Aktivitet</th><th>Sport</th><th>Tid h</th><th>HR</th><th></th></tr></thead><tbody id="raceRows"></tbody></table>
-    </div>
-    <button id="addRace" style="margin-top:8px">+ Lägg till lopp</button>
+    <h3>Grundkurvans fem låsta referenspunkter</h3>
+    <p class="small">Dina ursprungliga värden kan inte ändras och används som mall oavsett vilka egna lopp som läggs till.</p>
+    <div class="scroll"><table><thead><tr><th>Aktivitet</th><th>Tid h</th><th>HR</th></tr></thead><tbody id="baseRaceRows"></tbody></table></div>
+    <h3>Egna tävlingsresultat</h3>
+    <p class="small">Tid anges i timmar (t.ex. 0,833 för 50 minuter). Markera ”Använd” för perfekta lopp. Väggning: ange redan förkortad tid och omräknad puls. Krafter kvar: ange uppskattad längre tid om du kan.</p>
+    <div class="scroll"><table><thead><tr><th>Aktivitet</th><th>Sport</th><th>Tid h</th><th>HR efter 10 min</th><th>Bedömning</th><th>Använd</th><th></th></tr></thead><tbody id="raceRows"></tbody></table></div>
+    <button id="addRace" style="margin-top:8px">+ Lägg till eget lopp</button>
   </section>
 
   <div class="grid equal" style="margin-top:14px">
@@ -184,12 +204,12 @@
 </div>
 
 <script>
-// Race HR Optimizer v3.6
+// Race HR Optimizer v4.0
 const EXCEL_RACES = [{"activity": "5 km 2012", "sport": "Running", "durationH": 0.4166666666666667, "hr": 174.2}, {"activity": "10 km 2014", "sport": "Running", "durationH": 0.8333333333333334, "hr": 171.0}, {"activity": "Halvmaraton 2019 – före gångpaus", "sport": "Running", "durationH": 1.4166666666666667, "hr": 166.0}, {"activity": "Stockholm Marathon 2016", "sport": "Running", "durationH": 4.116666666666666, "hr": 156.0}, {"activity": "Ironman 13 h", "sport": "Running", "durationH": 13.0, "hr": 143.0}];
 const $ = id => document.getElementById(id);
 
 let testRows = [{speed:10,hr:146},{speed:11,hr:158},{speed:12,hr:171},{speed:13,hr:172},{speed:14,hr:173}];
-let raceRows = JSON.parse(JSON.stringify(EXCEL_RACES));
+let raceRows = [];
 let thresholdManual=false;
 let checkHrManual=false;
 let obsSpeedManual=false;
@@ -210,39 +230,45 @@ function linReg(points, xFn, yFn){
   return {a,b,rmse,n:pts.length};
 }
 
-function conconi(rows){
-  const pts=rows.map(r=>({x:+r.speed,y:+r.hr})).filter(p=>isNum(p.x)&&isNum(p.y)).sort((a,b)=>a.x-b.x);
-  if(!pts.length) return null;
-
-  // Conconi-brytningen ska plana av: pulsökningen per km/h måste MINSKA efter brytpunkten.
-  // En knäckning åt motsatt håll (brantare HR-ökning vid högre fart) accepteras inte.
+function conconiCore(pts){
+  // Delad brytpunkt: en observerad punkt ingår i BÅDA regressionerna.
+  // Minst två andra punkter på vardera sidan => minst fem totalt.
+  if(pts.length<5)return null;
   let best=null;
-  if(pts.length>=4){
-    for(let split=2; split<=pts.length-2; split++){
-      const lo=pts.slice(0,split), hi=pts.slice(split);
-      const r1=linReg(lo,p=>p.x,p=>p.y), r2=linReg(hi,p=>p.x,p=>p.y);
-      if(!r1||!r2) continue;
-      if(!(r2.b < r1.b)) continue;
-
-      const sse=lo.reduce((s,p)=>s+(r1.a+r1.b*p.x-p.y)**2,0)+hi.reduce((s,p)=>s+(r2.a+r2.b*p.x-p.y)**2,0);
-      const x=(r2.a-r1.a)/(r1.b-r2.b), y=r1.a+r1.b*x;
-      if(Number.isFinite(x)&&Number.isFinite(y) && x>=pts[0].x && x<=pts[pts.length-1].x){
-        if(!best || sse<best.sse) best={split,sse,ltvc:x,lthr:y,r1,r2,fallback:false};
-      }
-    }
+  for(let pivot=2;pivot<=pts.length-3;pivot++){
+    const lo=pts.slice(0,pivot+1), hi=pts.slice(pivot);
+    const r1=linReg(lo,p=>p.x,p=>p.y),r2=linReg(hi,p=>p.x,p=>p.y);
+    if(!r1||!r2||r1.b<=0||r2.b<0||r2.b>0.85*r1.b)continue;
+    const x=(r2.a-r1.a)/(r1.b-r2.b), y=r1.a+r1.b*x;
+    // Skärningen ska ligga i närheten av den delade mätpunkten.
+    const leftGap=pts[pivot].x-pts[pivot-1].x;
+    const rightGap=pts[pivot+1].x-pts[pivot].x;
+    if(!Number.isFinite(x)||!Number.isFinite(y)||x<pts[pivot].x-leftGap||x>pts[pivot].x+rightGap)continue;
+    const sse=lo.reduce((v,p)=>v+(r1.a+r1.b*p.x-p.y)**2,0)
+             +hi.reduce((v,p)=>v+(r2.a+r2.b*p.x-p.y)**2,0);
+    if(!best||sse<best.sse)best={pivot,sse,ltvc:x,lthr:y,r1,r2,fallback:false};
   }
-  if(best) return best;
-
-  // Om ingen korrekt avplanande brytpunkt hittas används sista/högsta teststeget som Conconi-värde.
-  const last=pts[pts.length-1];
-  const rAll=pts.length>=2 ? linReg(pts,p=>p.x,p=>p.y) : null;
-  return {split:pts.length,sse:NaN,ltvc:last.x,lthr:last.y,r1:rAll,r2:null,fallback:true};
+  return best;
+}
+function conconi(rows){
+  const pts=rows.map(r=>({x:+r.speed,y:+r.hr})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&p.x>0&&p.y>0).sort((a,b)=>a.x-b.x);
+  const maxHr=pts.length?Math.max(...pts.map(p=>p.y)):NaN;
+  if(pts.length<5)return {fallback:true,lthr:maxHr,reason:'För få steg för brytpunktsanalys; högsta uppmätta puls används.'};
+  const best=conconiCore(pts);
+  if(!best)return {fallback:true,lthr:maxHr,reason:'Ingen tydlig brytpunkt; högsta uppmätta puls används.'};
+  // Känslighet är information, inte ett skäl att dölja en funnen brytning.
+  if(pts.length===5)return {...best,preliminary:true};
+  const estimates=pts.map((_,i)=>conconiCore(pts.filter((_,j)=>i!==j))?.lthr);
+  const unstable=estimates.some(v=>!Number.isFinite(v)) || Math.max(...estimates)-Math.min(...estimates)>5;
+  return {...best,unstable};
 }
 
 function selectedRaces(){
   const sport=$('sportFilter').value;
-  return raceRows.filter(r=>isNum(r.durationH)&&isNum(r.hr)&&+r.durationH>0&&+r.hr>80&&(sport==='All'||r.sport===sport));
+  return raceRows.filter(r=>r.use!==false && r.status!=='reserve' && isNum(r.durationH)&&isNum(r.hr)&&+r.durationH>0&&+r.hr>80&&(sport==='All'||r.sport===sport));
 }
+function baseRaces(){const sport=$('sportFilter').value;return EXCEL_RACES.filter(r=>sport==='All'||r.sport===sport);}
+function allOwnRaces(){const sport=$('sportFilter').value;return raceRows.filter(r=>isNum(r.durationH)&&isNum(r.hr)&&+r.durationH>0&&+r.hr>80&&(sport==='All'||r.sport===sport));}
 
 function transform(kind,t,tau=1){
   if(kind==='log') return Math.log(t);
@@ -265,26 +291,40 @@ function fitTauModel(pts,kind){
   return best;
 }
 
-function fitTTHR(){
-  const pts=selectedRaces();
-  if(pts.length<2) return null;
+function fitFromPoints(pts){
+  if(pts.length<2)return null;
   const kind=$('modelKind').value;
   let chosen;
-  if(kind==='shiftlog' || kind==='exp'){
-    chosen=fitTauModel(pts,kind);
-  } else {
-    const reg=linReg(pts,p=>transform(kind,+p.durationH),p=>+p.hr);
-    chosen=reg ? {kind,reg,tau:null} : null;
+  if(kind==='shiftlog'||kind==='exp')chosen=fitTauModel(pts,kind);
+  else {const reg=linReg(pts,p=>transform(kind,+p.durationH),p=>+p.hr);chosen=reg?{kind,reg,tau:null}:null;}
+  if(!chosen)return null;
+  const a=chosen.reg.a,b=chosen.reg.b;
+  return {kind:chosen.kind,n:chosen.reg.n,rmse:chosen.reg.rmse,tau:chosen.tau,a,b,rawA:a,rawB:b,
+    hrAt(t){return this.a+this.b*transform(this.kind,t,this.tau||1);}};
+}
+function baseModel(){return fitFromPoints(baseRaces());}
+function fitTTHR(){
+  const base=baseModel(), own=selectedRaces(), method=$('raceMethod').value;
+  let fitted=null, delta=0;
+  if(method==='own')fitted=fitFromPoints(own);
+  else if(base){
+    fitted={...base};
+    if(method==='template' && own.length){
+      delta=own.reduce((sum,r)=>sum+(+r.hr-base.hrAt(+r.durationH)),0)/own.length;
+    }else if(method==='lt2'){
+      const target=effectiveLthr();
+      if(Number.isFinite(target))delta=target-base.hrAt(0.5);
+    }
+    fitted.a+=delta;
   }
-  if(!chosen) return null;
-
-  const offset=+$('hrOffset').value||0, slopeFactor=+$('slopeFactor').value||1;
-  const baseA=chosen.reg.a, baseB=chosen.reg.b;
-  return {
-    kind: chosen.kind, n: chosen.reg.n, rmse: chosen.reg.rmse, tau:chosen.tau,
-    a: baseA + offset, b: baseB * slopeFactor, rawA: baseA, rawB: baseB,
-    hrAt(t){ return this.a + this.b * transform(this.kind,t,this.tau||1); }
-  };
+  if(!fitted)return null;
+  const offset=+$('hrOffset').value||0,slopeFactor=+$('slopeFactor').value||1;
+  fitted.a+=offset;
+  fitted.b*=slopeFactor;
+  fitted.shift=delta;
+  fitted.ownCount=own.length;
+  fitted.hrAt=function(t){return this.a+this.b*transform(this.kind,t,this.tau||1);};
+  return fitted;
 }
 
 function durationFromHR(model, hr){
@@ -318,7 +358,7 @@ function speedModel(){
   const c=conconi(testRows);
   let pts=testRows.map(r=>({hr:+r.hr,speed:+r.speed})).filter(p=>isNum(p.hr)&&isNum(p.speed));
   if(c && !c.fallback) {
-    const below = testRows.filter(r=>+r.speed <= c.ltvc+0.001).map(r=>({hr:+r.hr,speed:+r.speed}));
+    const below = testRows.filter(r=>+r.speed <= (c.r1 ? testRows.reduce((best,r)=> Math.abs(+r.speed-c.ltvc)<Math.abs(+best.speed-c.ltvc)?r:best, testRows[0]).speed : c.ltvc)+0.001).map(r=>({hr:+r.hr,speed:+r.speed}));
     if(below.length>=2) pts=below;
   }
   const reg=linReg(pts,p=>p.hr,p=>p.speed);
@@ -395,7 +435,7 @@ function drawChart(canvas, pts, xKey, yKey, opts={}){
     const steps=80; for(let i=0;i<=steps;i++){ const x=xmin+(xmax-xmin)*i/steps; const y=opts.line(x); if(i===0)ctx.moveTo(X(x),Y(y)); else ctx.lineTo(X(x),Y(y)); } ctx.stroke();
   }
   if(opts.line2){
-    ctx.strokeStyle='#b45309'; ctx.lineWidth=2; ctx.setLineDash([7,5]); ctx.beginPath();
+    ctx.strokeStyle='#94a3b8'; ctx.lineWidth=2; ctx.setLineDash([7,5]); ctx.beginPath();
     const steps=80; for(let i=0;i<=steps;i++){ const x=xmin+(xmax-xmin)*i/steps; const y=opts.line2(x); if(i===0)ctx.moveTo(X(x),Y(y)); else ctx.lineTo(X(x),Y(y)); } ctx.stroke(); ctx.setLineDash([]);
   }
   for(const p of pts){ ctx.fillStyle=p.color||'#2563eb'; ctx.beginPath(); ctx.arc(X(+p[xKey]),Y(+p[yKey]),4,0,Math.PI*2); ctx.fill(); }
@@ -405,7 +445,9 @@ function drawChart(canvas, pts, xKey, yKey, opts={}){
 function renderAllRows(){
   $('testRows').innerHTML=testRows.map((r,i)=>`<div class="row"><input type="number" step="0.1" value="${r.speed}" onchange="testRows[${i}].speed=this.value;thresholdManual=false;calc()"><input type="number" step="1" value="${r.hr}" onchange="testRows[${i}].hr=this.value;thresholdManual=false;calc()"><button class="danger" onclick="testRows.splice(${i},1);thresholdManual=false;renderAllRows();calc()">×</button></div>`).join('');
   const sport=$('sportFilter').value;
-  $('raceRows').innerHTML=raceRows.map((r,i)=> sport==='All'||r.sport===sport ? `<tr><td><input value="${r.activity||''}" onchange="raceRows[${i}].activity=this.value;calc()"></td><td><select onchange="raceRows[${i}].sport=this.value;calc()"><option ${r.sport==='Running'?'selected':''}>Running</option><option ${r.sport==='Cycling'?'selected':''}>Cycling</option><option ${r.sport==='Nordic skiing'?'selected':''}>Nordic skiing</option><option ${r.sport==='Swimming'?'selected':''}>Swimming</option></select></td><td><input type="number" step="0.01" value="${r.durationH}" onchange="raceRows[${i}].durationH=this.value;calc()"></td><td><input type="number" step="1" value="${r.hr}" onchange="raceRows[${i}].hr=this.value;calc()"></td><td><button class="danger" onclick="raceRows.splice(${i},1);renderAllRows();calc()">×</button></td></tr>` : '').join('');
+  $('baseRaceRows').innerHTML=EXCEL_RACES.filter(r=>sport==='All'||r.sport===sport).map(r=>`<tr style="background:#f1f5f9;color:#64748b"><td>${r.activity}</td><td>${fmt(r.durationH,3)}</td><td>${fmt(r.hr,1)}</td></tr>`).join('');
+  const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  $('raceRows').innerHTML=raceRows.map((r,i)=>sport==='All'||r.sport===sport ? `<tr><td><input value="${esc(r.activity)}" onchange="raceRows[${i}].activity=this.value;calc()"></td><td><select onchange="raceRows[${i}].sport=this.value;renderAllRows();calc()">${['Running','Cycling','Nordic skiing','Swimming'].map(x=>`<option ${r.sport===x?'selected':''}>${x}</option>`).join('')}</select></td><td><input type="number" step="0.001" min="0" value="${esc(r.durationH)}" onchange="raceRows[${i}].durationH=this.value;calc()"></td><td><input type="number" step="0.1" value="${esc(r.hr)}" onchange="raceRows[${i}].hr=this.value;calc()"></td><td><select onchange="raceRows[${i}].status=this.value;if(this.value==='reserve')raceRows[${i}].use=false;renderAllRows();calc()"><option value="max" ${r.status==='max'?'selected':''}>Maximalt</option><option value="wall" ${r.status==='wall'?'selected':''}>Väggning – korrigerad</option><option value="reserve" ${r.status==='reserve'?'selected':''}>Krafter kvar</option><option value="reserveAdjusted" ${r.status==='reserveAdjusted'?'selected':''}>Krafter kvar – uppskattad tid</option></select></td><td><input aria-label="Använd lopp" type="checkbox" ${r.use!==false && r.status!=='reserve'?'checked':''} ${r.status==='reserve'?'disabled':''} onchange="raceRows[${i}].use=this.checked;calc()"></td><td><button class="danger" onclick="raceRows.splice(${i},1);renderAllRows();calc()">×</button></td></tr>`:'').join('');
 }
 
 function calc(){
@@ -414,14 +456,17 @@ function calc(){
   if(!thresholdManual && cc && Number.isFinite(cc.lthr)){
     $('thresholdHr').value=fmt(cc.lthr,0);
   }
+  if(!thresholdManual && (!cc || !Number.isFinite(cc.lthr))) $('thresholdHr').value='';
   const usedLthr=effectiveLthr();
   $('thresholdEstimate').innerHTML = cc
     ? (cc.fallback
-       ? `Reservestimat från högsta teststeget: <b>${fmt(cc.lthr,0)} bpm</b> vid ${fmt(cc.ltvc,1)} km/h.`
-       : `Conconi-estimat: <b>${fmt(cc.lthr,0)} bpm</b> vid cirka ${fmt(cc.ltvc,1)} km/h.`)
+       ? `<span class="warn">Ingen tydlig brytpunkt.</span> ${cc.reason||""} Reservestimat: <b>${fmt(cc.lthr,0)} bpm</b>.`
+       : `Conconi-estimat: <b>${fmt(cc.lthr,0)} bpm</b> vid cirka ${fmt(cc.ltvc,1)} km/h.${cc.preliminary ? " Preliminärt estimat (fem steg)." : ""}${cc.unstable ? " <span class=\"warn\">Känslig för enskilda punkter.</span>" : ""}`)
     : 'Grafestimat: –';
 
   const model=fitTTHR(), distance=+$('distance').value, safety=+$('safety').value||0;
+  const method=$('raceMethod').value;
+  $('methodInfo').textContent=method==='own'?(model?'Egen kurva från '+model.ownCount+' valda lopp.':'Minst två egna lopp med olika tider krävs.'):method==='template'?'Grundkurvans form bevaras; nivåskillnad '+fmt(model?.shift,1)+' bpm från '+selectedRaces().length+' valt/valda lopp.':'LT2 förankras vid 30 minuter; grundkurvans form bevaras.';
   const dry=solveFixed(distance,1,model,safety);
 
   if(dry && !checkHrManual) $('checkHr').value=fmt(dry.hr,0);
@@ -447,7 +492,7 @@ function calc(){
   $('speedModel').innerHTML =
     `HR→fartmodell: fart = <b>${fmt(speedReg?.a,3)}</b> + <b>${fmt(speedReg?.b,4)}</b> × HR. ` +
     (cc ? (cc.fallback
-      ? `Ingen tydlig avplanande Conconi-brytpunkt hittades; högsta teststeget används som reserv. `
+      ? `Conconi-brytning osäker; manuell LTHR rekommenderas. `
       : `Conconi-brytning hittad. `)
       : '') +
     `Vald LTHR = <b>${fmt(usedLthr,0)} bpm</b>.`;
@@ -504,20 +549,23 @@ function calc(){
     line: x => cc && !cc.fallback && x<=cc.ltvc ? cc.r1.a+cc.r1.b*x : cc && !cc.fallback ? cc.r2.a+cc.r2.b*x : (speedReg ? (x-speedReg.a)/speedReg.b : NaN),
   });
 
-  const pts=selectedRaces().map(r=>({durationH:+r.durationH,hr:+r.hr,color:'#2563eb'}));
-  const chartPts=[...pts];
+  const pts=allOwnRaces().map(r=>({durationH:+r.durationH,hr:+r.hr,color:r.use!==false && r.status!=='reserve'?'#16a34a':'#ea580c'}));
+  const baseForChart=baseModel();
+  const basePts=baseRaces().map(r=>({durationH:+r.durationH,hr:+r.hr,color:'#94a3b8'}));
+  const chartPts=[...basePts,...pts];
   if(dry) chartPts.push({durationH:dry.time,hr:dry.hr,color:'#047857'});
   if(live) chartPts.push({durationH:live.time,hr:live.hr,color:'#b45309'});
   drawChart($('ttChart'), chartPts, 'durationH','hr', {
     xlabel:'TT timmar', ylabel:'HR', xDigits:1,
     xmin:0, xmax: Math.max(14, ...chartPts.map(p=>p.durationH)),
-    line: x => model ? model.hrAt(Math.max(0.05,x)) : NaN
+    line: x => model ? model.hrAt(Math.max(0.05,x)) : NaN,
+    line2: x => baseForChart ? baseForChart.hrAt(Math.max(0.05,x)) : NaN
   });
 }
 
 $('addTest').onclick=()=>{testRows.push({speed:'',hr:''});thresholdManual=false;renderAllRows();calc();};
-$('addRace').onclick=()=>{raceRows.push({activity:'Eget lopp',sport:$('sportFilter').value==='All'?'Running':$('sportFilter').value,durationH:'',hr:''});renderAllRows();calc();};
-$('resetExcel').onclick=()=>{raceRows=JSON.parse(JSON.stringify(EXCEL_RACES));renderAllRows();calc();};
+$('addRace').onclick=()=>{raceRows.push({activity:'Eget lopp',sport:$('sportFilter').value==='All'?'Running':$('sportFilter').value,durationH:'',hr:'',status:'max',use:true});renderAllRows();calc();};
+$('resetExcel').onclick=()=>{if(confirm('Rensa alla egna lopp?')){raceRows=[];renderAllRows();calc();}};
 $('alignLthr').onclick=()=>{
   const lthr=effectiveLthr(), model=fitTTHR();
   if(!Number.isFinite(lthr)||!model) return alert('Behöver tröskelpuls och TT/HR-kurva först.');
@@ -525,7 +573,7 @@ $('alignLthr').onclick=()=>{
   $('hrOffset').value = fmt((+$('hrOffset').value||0) + (lthr-current),0);
   calc();
 };
-['sportFilter','modelKind','safety','hrOffset','slopeFactor','distance','startGuess','factorMode','manualFactor','curveHrIn','curveSpeedIn','curve2HrIn','curve2TimeIn'].forEach(id=>$(id).addEventListener('input',()=>{ if(id==='sportFilter') renderAllRows(); calc(); }));
+['sportFilter','raceMethod','modelKind','safety','hrOffset','slopeFactor','distance','startGuess','factorMode','manualFactor','curveHrIn','curveSpeedIn','curve2HrIn','curve2TimeIn'].forEach(id=>$(id).addEventListener('input',()=>{ if(id==='sportFilter') renderAllRows(); calc(); }));
 $('thresholdHr').addEventListener('input',()=>{ thresholdManual=true; calc(); });
 $('resetThreshold').onclick=()=>{ thresholdManual=false; calc(); };
 $('checkHr').addEventListener('input',()=>{ checkHrManual=true; calc(); });
@@ -538,6 +586,53 @@ step1Modal.addEventListener('click',e=>{ if(e.target===step1Modal){ step1Modal.c
 
 // Ta bort eventuell gammal service worker som kan ha cachat prototyp 2
 if('serviceWorker' in navigator){ navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}); }
+const PROFILE_FIELDS=['sportFilter','raceMethod','modelKind','safety','hrOffset','slopeFactor','distance','startGuess','factorMode','manualFactor','curveHrIn','curveSpeedIn','curve2HrIn','curve2TimeIn','thresholdHr','checkHr','obsSpeed'];
+function collectProfile(){
+  return {format:'race-hr-optimizer-profile',version:1,name:$('profileName').value,
+    testRows:JSON.parse(JSON.stringify(testRows)),raceRows:JSON.parse(JSON.stringify(raceRows)),
+    fields:Object.fromEntries(PROFILE_FIELDS.map(id=>[id,$(id).value])),
+    flags:{thresholdManual,checkHrManual,obsSpeedManual}};
+}
+function restoreProfile(p){
+  if(!p||p.format!=='race-hr-optimizer-profile'||!Array.isArray(p.testRows)||!Array.isArray(p.raceRows)||!p.fields)throw Error('Inte en giltig Race HR Optimizer-profil.');
+  testRows=p.testRows.map(r=>({speed:r.speed,hr:r.hr}));
+  raceRows=p.raceRows.map(r=>({activity:String(r.activity||''),sport:String(r.sport||'Running'),durationH:r.durationH,hr:r.hr,status:r.status||'max',use:r.use!==false}));
+  // Äldre profiler innehöll grundkurvans fem redigerbara rader. Ta inte in dessa som egna lopp.
+  if(!('raceMethod' in p.fields) && raceRows.length>=EXCEL_RACES.length && EXCEL_RACES.every((b,i)=>raceRows[i].activity===b.activity && Math.abs(+raceRows[i].durationH-b.durationH)<0.00001 && +raceRows[i].hr===b.hr))raceRows.splice(0,EXCEL_RACES.length);
+  $('raceMethod').value='template';
+  for(const [id,value] of Object.entries(p.fields))if(PROFILE_FIELDS.includes(id)&&$(id))$(id).value=value;
+  thresholdManual=!!p.flags?.thresholdManual;
+  checkHrManual=!!p.flags?.checkHrManual;
+  obsSpeedManual=!!p.flags?.obsSpeedManual;
+  $('profileName').value=p.name||'Sparad profil';
+  renderAllRows();calc();
+  $('saveStatus').textContent='Profilen ”'+$('profileName').value+'” är inläst.';
+}
+function safeFilename(name){return (name||'race-hr-profil').replace(/[^a-zA-Z0-9åäöÅÄÖ _-]/g,'').trim().replace(/\s+/g,'_').slice(0,70)||'race-hr-profil';}
+function downloadFile(filename,content,type){
+  const blob=new Blob([content],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$('saveJson').onclick=()=>{
+  const p=collectProfile();downloadFile(safeFilename(p.name)+'.json',JSON.stringify(p,null,2),'application/json');
+  $('saveStatus').textContent='Datafilen har skickats till webbläsarens hämtningar.';
+};
+$('saveHtml').onclick=()=>{
+  const p=collectProfile(),clone=document.documentElement.cloneNode(true);
+  clone.querySelectorAll('#embeddedSavedProfile').forEach(n=>n.remove());
+  const script=document.createElement('script');script.id='embeddedSavedProfile';
+  script.textContent='try{restoreProfile('+JSON.stringify(p).replace(/</g,'\\u003c')+');}catch(e){alert(e.message)}';
+  clone.querySelector('body').appendChild(script);
+  downloadFile(safeFilename(p.name)+'.html','<!doctype html>\n'+clone.outerHTML,'text/html;charset=utf-8');
+  $('saveStatus').textContent='Ifylld HTML-kopia har skickats till webbläsarens hämtningar.';
+};
+$('loadProfile').addEventListener('change',async e=>{
+  const file=e.target.files?.[0];if(!file)return;
+  try{
+    if(!file.name.toLowerCase().endsWith('.json'))throw Error('Öppna HTML-kopian direkt i webbläsaren. Välj en JSON-fil här.');
+    restoreProfile(JSON.parse(await file.text()));
+  }catch(err){alert(err.message)}finally{e.target.value=''}
+});
 renderAllRows(); calc();
 </script>
 </body>
